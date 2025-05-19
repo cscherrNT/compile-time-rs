@@ -24,7 +24,10 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote, ToTokens};
 use time::{macros::format_description, OffsetDateTime};
 
-static COMPILE_TIME: Lazy<OffsetDateTime> = Lazy::new(OffsetDateTime::now_utc);
+static COMPILE_TIME_UTZ: Lazy<OffsetDateTime> = Lazy::new(OffsetDateTime::now_utc);
+static COMPILE_TIME_LOCAL: Lazy<OffsetDateTime> = Lazy::new(|| {
+  OffsetDateTime::now_local().expect("compile-time-rs could not determine the local time offset from UTC. Consider using universal instead of local time")
+});
 static RUSTC_VERSION: Lazy<rustc_version::Result<rustc_version::Version>> = Lazy::new(rustc_version::version);
 
 /// Compile date as `time::Date`.
@@ -41,7 +44,38 @@ static RUSTC_VERSION: Lazy<rustc_version::Result<rustc_version::Version>> = Lazy
 /// ```
 #[proc_macro]
 pub fn date(_item: TokenStream) -> TokenStream {
-  let date = COMPILE_TIME.date();
+  let date = COMPILE_TIME_UTZ.date();
+
+  let year = date.year();
+  let month = format_ident!("{}", format!("{:?}", date.month()));
+  let day = date.day();
+
+  quote! {
+    match ::time::Date::from_calendar_date(#year, ::time::Month::#month, #day) {
+      Ok(date) => date,
+      _ => ::core::unreachable!(),
+    }
+  }
+  .into()
+}
+
+/// Compile date as `time::Date`.
+///
+/// This macro uses local time instead of UTC.
+///
+/// # Example
+///
+/// ```
+/// const COMPILE_DATE: time::Date = compile_time::date!();
+///
+/// let year = COMPILE_DATE.year();
+/// let month = COMPILE_DATE.month();
+/// let day = COMPILE_DATE.day();
+/// println!("Compiled on {month} {day}, {year}.");
+/// ```
+#[proc_macro]
+pub fn date_local(_item: TokenStream) -> TokenStream {
+  let date = COMPILE_TIME_LOCAL.date();
 
   let year = date.year();
   let month = format_ident!("{}", format!("{:?}", date.month()));
@@ -72,7 +106,33 @@ pub fn date(_item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn date_str(_item: TokenStream) -> TokenStream {
-  let date = COMPILE_TIME.date();
+  let date = COMPILE_TIME_UTZ.date();
+
+  let fmt = format_description!("[year]-[month]-[day]");
+  let date_str = date.format(&fmt).unwrap();
+
+  quote! { #date_str }.into()
+}
+
+/// Compile date as `&'static str` in `yyyy-MM-dd` format.
+///
+/// This macro uses local time instead of UTC.
+///
+/// # Example
+///
+/// ```
+/// const COMPILE_DATE: time::Date = compile_time::date!();
+///
+/// let year = COMPILE_DATE.year();
+/// let month: u8 = COMPILE_DATE.month().into();
+/// let day = COMPILE_DATE.day();
+/// let date_string = format!("{year:04}-{month:02}-{day:02}");
+///
+/// assert_eq!(compile_time::date_str!(), date_string);
+/// ```
+#[proc_macro]
+pub fn date_str_local(_item: TokenStream) -> TokenStream {
+  let date = COMPILE_TIME_LOCAL.date();
 
   let fmt = format_description!("[year]-[month]-[day]");
   let date_str = date.format(&fmt).unwrap();
@@ -94,7 +154,38 @@ pub fn date_str(_item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn time(_item: TokenStream) -> TokenStream {
-  let time = COMPILE_TIME.time();
+  let time = COMPILE_TIME_UTZ.time();
+
+  let hour = time.hour();
+  let minute = time.minute();
+  let second = time.second();
+
+  quote! {
+    match ::time::Time::from_hms(#hour, #minute, #second) {
+      Ok(time) => time,
+      _ => ::core::unreachable!(),
+    }
+  }
+  .into()
+}
+
+/// Compile time as `time::Time`.
+///
+/// This macro uses local time instead of UTC.
+///
+/// # Example
+///
+/// ```
+/// const COMPILE_TIME: time::Time = compile_time::time!();
+///
+/// let hour = COMPILE_TIME.hour();
+/// let minute = COMPILE_TIME.minute();
+/// let second = COMPILE_TIME.second();
+/// println!("Compiled at {hour:02}:{minute:02}:{second:02}.");
+/// ```
+#[proc_macro]
+pub fn time_local(_item: TokenStream) -> TokenStream {
+  let time = COMPILE_TIME_LOCAL.time();
 
   let hour = time.hour();
   let minute = time.minute();
@@ -125,7 +216,33 @@ pub fn time(_item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn time_str(_item: TokenStream) -> TokenStream {
-  let time = COMPILE_TIME.time();
+  let time = COMPILE_TIME_UTZ.time();
+
+  let fmt = format_description!("[hour]:[minute]:[second]");
+  let time_str = time.format(&fmt).unwrap();
+
+  quote! { #time_str }.into()
+}
+
+/// Compile time as `&'static str` in `hh:mm:ss` format.
+///
+/// This macro uses local time instead of UTC.
+///
+/// # Example
+///
+/// ```
+/// const COMPILE_TIME: time::Time = compile_time::time!();
+///
+/// let hour = COMPILE_TIME.hour();
+/// let minute = COMPILE_TIME.minute();
+/// let second = COMPILE_TIME.second();
+/// let time_string = format!("{hour:02}:{minute:02}:{second:02}");
+///
+/// assert_eq!(compile_time::time_str!(), time_string);
+/// ```
+#[proc_macro]
+pub fn time_str_local(_item: TokenStream) -> TokenStream {
+  let time = COMPILE_TIME_LOCAL.time();
 
   let fmt = format_description!("[hour]:[minute]:[second]");
   let time_str = time.format(&fmt).unwrap();
@@ -160,7 +277,66 @@ pub fn time_str(_item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn datetime(_item: TokenStream) -> TokenStream {
-  let datetime = *COMPILE_TIME;
+  let datetime = *COMPILE_TIME_UTZ;
+
+  let year = datetime.year();
+  let month = format_ident!("{}", format!("{:?}", datetime.month()));
+  let day = datetime.day();
+
+  let hour = datetime.hour();
+  let minute = datetime.minute();
+  let second = datetime.second();
+
+  let date = quote! {
+    match ::time::Date::from_calendar_date(#year, ::time::Month::#month, #day) {
+      Ok(date) => date,
+      _ => ::core::unreachable!(),
+    }
+  };
+
+  let time = quote! {
+    match ::time::Time::from_hms(#hour, #minute, #second) {
+      Ok(time) => time,
+      _ => ::core::unreachable!(),
+    }
+  };
+
+  quote! {
+    ::time::PrimitiveDateTime::new(#date, #time).assume_utc()
+  }
+  .into()
+}
+
+/// Compile date and time as `time::OffsetDateTime`.
+///
+/// This macro uses local time instead of UTC.
+///
+/// # Example
+///
+/// ```
+/// const COMPILE_DATETIME: time::OffsetDateTime = compile_time::datetime!();
+///
+/// let year = COMPILE_DATETIME.year();
+/// let month = COMPILE_DATETIME.month();
+/// let day = COMPILE_DATETIME.day();
+/// let hour = COMPILE_DATETIME.hour();
+/// let minute = COMPILE_DATETIME.minute();
+/// let second = COMPILE_DATETIME.second();
+/// println!("Compiled at {hour:02}:{minute:02}:{second:02} on {month} {day}, {year}.");
+/// #
+/// # // Evaluation is only done once.
+/// # std::thread::sleep(std::time::Duration::from_secs(1));
+/// # assert_eq!(COMPILE_DATETIME, compile_time::datetime!());
+/// #
+/// # // Additional sanity check.
+/// # let now = time::OffsetDateTime::now_utc();
+/// # let yesterday = now.saturating_sub(time::Duration::days(1));
+/// # assert!(COMPILE_DATETIME > yesterday);
+/// # assert!(COMPILE_DATETIME < now);
+/// ```
+#[proc_macro]
+pub fn datetime_local(_item: TokenStream) -> TokenStream {
+  let datetime = *COMPILE_TIME_LOCAL;
 
   let year = datetime.year();
   let month = format_ident!("{}", format!("{:?}", datetime.month()));
@@ -203,7 +379,30 @@ pub fn datetime(_item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn datetime_str(_item: TokenStream) -> TokenStream {
-  let datetime = *COMPILE_TIME;
+  let datetime = *COMPILE_TIME_UTZ;
+
+  let fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]Z");
+  let datetime_str = datetime.format(&fmt).unwrap();
+
+  quote! { #datetime_str }.into()
+}
+
+/// Compile time as `&'static str` in `yyyy-MM-ddThh:mm:ssZ` format.
+///
+/// This macro uses local time instead of UTC.
+///
+/// # Example
+///
+/// ```
+/// const COMPILE_DATE_STRING: &str = compile_time::date_str!();
+/// const COMPILE_TIME_STRING: &str = compile_time::time_str!();
+///
+/// let datetime_string = format!("{COMPILE_DATE_STRING}T{COMPILE_TIME_STRING}Z");
+/// assert_eq!(compile_time::datetime_str!(), datetime_string);
+/// ```
+#[proc_macro]
+pub fn datetime_str_local(_item: TokenStream) -> TokenStream {
+  let datetime = *COMPILE_TIME_LOCAL;
 
   let fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]Z");
   let datetime_str = datetime.format(&fmt).unwrap();
@@ -222,7 +421,30 @@ pub fn datetime_str(_item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn unix(_item: TokenStream) -> TokenStream {
-  let datetime = *COMPILE_TIME;
+  let datetime = *COMPILE_TIME_UTZ;
+
+  let unix_timestamp = proc_macro2::Literal::i64_unsuffixed(datetime.unix_timestamp());
+
+  quote! {
+    #unix_timestamp
+  }
+  .into()
+}
+
+/// Compile date and time as UNIX timestamp in seconds.
+///
+/// This macro uses local time instead of UTC.
+///
+/// # Example
+///
+/// ```
+/// const COMPILE_DATETIME: time::OffsetDateTime = compile_time::datetime!();
+///
+/// assert_eq!(compile_time::unix!(), COMPILE_DATETIME.unix_timestamp());
+/// ```
+#[proc_macro]
+pub fn unix_local(_item: TokenStream) -> TokenStream {
+  let datetime = *COMPILE_TIME_LOCAL;
 
   let unix_timestamp = proc_macro2::Literal::i64_unsuffixed(datetime.unix_timestamp());
 

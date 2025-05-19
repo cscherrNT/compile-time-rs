@@ -20,4 +20,4 @@ proc-macro2 = "1.0"
 quote = "1.0"
 rustc_version = "0.4"
 semver = "1"
-time = { version = "0.3.17", features = ["macros", "formatting"] }
+time = { version = "0.3.17", features = ["macros", "formatting", "local-offset"] }
